@@ -64,3 +64,7 @@ The Data quality tab now ingests exact-station NWS and NOAA aviation observation
 ## Trader research release
 
 The Trader research tab combines a bounded public Kalshi leaderboard sample from predicting.top with reported all-time Climate and Weather category P&L and visible Kalshi Social activity. It matches explicit recent taker buys against exact radar tickers/sides and current executable quotes; maker intent, hidden activity, stale data and missing history remain unknown. All entries retain the independent probability, fee and paper-entry gates. No real orders are placed. See [docs/TRADER_DATA.md](docs/TRADER_DATA.md) for sources, sampling limits, matching rules, provider access and the remaining profitability evidence gaps. The standalone scanner remains an anonymous flow scanner; trader research runs in the dashboard while its tab is open.
+
+## Kalshi trade-slip links
+
+Radar rows, activity alerts, paper ledger entries, visible trader buys and contract reviews can open the exact event, contract bucket and YES/NO side in Kalshi's buy ticket. Reviews also offer Copy slip link. The link uses Kalshi's native `op_market_ticker`, `op_order_side`, `op_side=BUY`, and `op_order_type=dollars` parameters, observed on the public site and checked after reload. It does not prefill an amount or price or submit an order. Sign-in and iOS app handoff are controlled by Kalshi; the app handoff has not been verified on a physical iPhone. Supported series are restricted to the seven daily-high cities, with date/series consistency checks.
