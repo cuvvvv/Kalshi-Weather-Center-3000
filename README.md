@@ -60,3 +60,7 @@ Before real money: ingest matched historical forecasts and official outcomes, ca
 ## Data quality release
 
 The Data quality tab now ingests exact-station NWS and NOAA aviation observations, date-matched daily and hourly forecasts, raw station reports, provider issue times and quality flags. Missing, stale, mismatched and outlying inputs remain visible. A shared D1 archive stores distinct source revisions for later analysis, triggered by visits/requests. See docs/DATA_SOURCES.md for provenance, thresholds, retention, provider independence, and the remaining official-settlement/probability gaps. No paid feed or calibrated probability model is connected.
+
+## Trader research release
+
+The Trader research tab combines a bounded public Kalshi leaderboard sample from predicting.top with reported all-time Climate and Weather category P&L and visible Kalshi Social activity. It matches explicit recent taker buys against exact radar tickers/sides and current executable quotes; maker intent, hidden activity, stale data and missing history remain unknown. All entries retain the independent probability, fee and paper-entry gates. No real orders are placed. See [docs/TRADER_DATA.md](docs/TRADER_DATA.md) for sources, sampling limits, matching rules, provider access and the remaining profitability evidence gaps. The standalone scanner remains an anonymous flow scanner; trader research runs in the dashboard while its tab is open.
