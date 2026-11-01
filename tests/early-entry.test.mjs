@@ -1,0 +1,20 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {earlyFlow,signalStage,maxEntry,entryGate,recordObservations,expectancy} from '../lib/radar-core.mjs';
+const now=Date.now(),trade=(age,count,id)=>({trade_id:id,created_time:new Date(now-age*1000).toISOString(),count_fp:String(count),yes_price_dollars:'.7'});
+const c={minPrice:.55,maxPrice:.95,maxSpread:.03,quantity:10,minMinutes:30,min1:25,earlyRatio:3,minBaseline:25,min5:100,ratio:2,confirmMin:.75};
+const row={ticker:'KXHIGHNY-26NOV01-B50',side:'yes',event:'KXHIGHNY-26NOV01',complete:true,audited:true,received:now,close:new Date(now+86400000).toISOString(),book:{ask:.70,bid:.68,spread:.02,depth:20},minute:50,baseline:90,earlyRatio:5,recent:80,previous:60,ratio:80/60,feeType:'quadratic',coefficient:.07,rules:'Maximum temperature at CLINYC according to settlement source'};
+const evidence={lower:.80,probability:.86,source:'https://api.weather.gov/example',issued:new Date(now-60000).toISOString(),reviewed:true};
+test('one-minute burst is normalized to nine-minute baseline and duplicate prints excluded',()=>{const t=trade(20,30,'a');const f=earlyFlow([t,t,trade(60,90,'b'),trade(600,999,'c'),trade(-1,999,'d')],now);assert.equal(f.minute,30);assert.equal(f.baseline,90);assert.equal(f.earlyRatio,3)});
+test('early signal can precede five-minute confirmation below 75 cents',()=>{assert.equal(signalStage(row,c,now),'EARLY');assert.equal(signalStage({...row,book:{...row.book,ask:.78},recent:150,previous:50,ratio:3},c,now),'CONFIRMED')});
+test('incomplete tape, stale quotes, tiny baselines and near-close markets cannot trigger',()=>{for(const patch of [{complete:false},{received:now-16000},{baseline:24},{close:new Date(now+60000).toISOString()}])assert.equal(signalStage({...row,...patch},c,now),'WATCH')});
+test('entry ceiling pays fees and slippage while retaining minimum net edge',()=>{const max=maxEntry(.8,10,.07,.01,.03,.9);assert.ok(max<.8);assert.ok(expectancy(.8,max,10,.07,.01).net>=.3-1e-8);assert.ok(expectancy(.8,max+.01,10,.07,.01).net<.3)});
+test('positive conservative edge with reviewed fresh evidence is paper eligible',()=>{assert.equal(entryGate(row,evidence,[],now).allowed,true)});
+test('entry gate blocks stale/future evidence, unsupported fees, duplicate city/day and negative EV',()=>{
+ assert.equal(entryGate(row,{...evidence,issued:new Date(now-3*3600000).toISOString()},[],now).allowed,false);
+ assert.equal(entryGate(row,{...evidence,issued:new Date(now+120000).toISOString()},[],now).allowed,false);
+ assert.equal(entryGate({...row,feeType:'unknown'},evidence,[],now).allowed,false);
+ assert.equal(entryGate(row,evidence,[{event:row.event,status:'open',ticker:'other-bucket'}],now).allowed,false);
+ assert.equal(entryGate(row,{...evidence,lower:.7},[],now).allowed,false);
+ assert.equal(entryGate({...row,received:NaN},evidence,[],now).allowed,false);
+});
+test('fifteen-minute mark uses executable bid, and missing observations are not backfilled',()=>{const a={...row,time:new Date(now-900000).toISOString(),marks:{}};const r=recordObservations([a],[{...row,book:{...row.book,bid:.74}}],now)[0];assert.ok(Math.abs(r.marks.m15.bidChange-.04)<1e-8);assert.equal(recordObservations([{...a,time:new Date(now-1800000).toISOString()}],[row],now)[0].marks.m15,undefined)});

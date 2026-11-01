@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {fee,flow,bookSide,qualify,expectancy} from '../lib/radar-core.mjs';
+test('fees round up at order level',()=>{assert.equal(fee(.9,10),.07);assert.equal(fee(.9,1),.01);});
+test('95 percent accuracy loses money at 97 cents plus costs',()=>{assert.ok(expectancy(.95,.97,10).net<0);});
+test('opposite bids produce executable ask and correct depth',()=>{assert.deepEqual(bookSide({yes_dollars:[['.85','30']],no_dollars:[['.1','20'],['.12','5']]},'yes'),{bid:.85,ask:.88,spread:.030000000000000027,depth:5});});
+test('windows exclude future and older prints, split at 5m',()=>{const now=Date.now();const make=(s,n)=>({created_time:new Date(now-s*1000).toISOString(),count_fp:String(n)});assert.deepEqual(flow([make(10,200),make(300,50),make(600,999),make(-1,999)],now),{recent:200,previous:50,ratio:4});});
+test('no alert for zero baseline, incomplete tape, or shallow book',()=>{const c={minPrice:.75,maxPrice:.95,maxSpread:.03,quantity:10,min5:100,ratio:2};const r={complete:true,book:{ask:.85,spread:.02,depth:10},recent:200,previous:50,ratio:4};assert.equal(qualify(r,c),true);assert.equal(qualify({...r,previous:0},c),false);assert.equal(qualify({...r,complete:false},c),false);assert.equal(qualify({...r,book:{...r.book,depth:9}},c),false);});
