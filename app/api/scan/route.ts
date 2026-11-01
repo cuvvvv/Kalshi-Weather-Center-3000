@@ -1,16 +1,16 @@
 import {flow,earlyFlow,number,bookSide,signalStage,fee} from '../../../lib/radar-core.mjs';
-const BASE='https://external-api.kalshi.com/trade-api/v2';
+import {createKalshiClient} from '../../../lib/kalshi-client.mjs';
 const SERIES=[['KXHIGHNY','New York'],['KXHIGHCHI','Chicago'],['KXHIGHMIA','Miami'],['KXHIGHLAX','Los Angeles'],['KXHIGHAUS','Austin'],['KXHIGHDEN','Denver'],['KXHIGHPHIL','Philadelphia']];
-let inflight=0;const queue:Array<()=>void>=[];const metaCache=new Map<string,{expires:number,data:any}>();
-async function api(path:string):Promise<any>{if(inflight>=2)await new Promise<void>(r=>queue.push(r));inflight++;try{await new Promise(r=>setTimeout(r,150));for(let a=0;a<2;a++){const r=await fetch(BASE+path,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});if(r.status===429&&a===0){await r.text();await new Promise(r=>setTimeout(r,1200));continue;}if(!r.ok)throw Error('Kalshi HTTP '+r.status);return r.json();}throw Error('Rate limited');}finally{inflight--;queue.shift()?.();}}
-async function metadata(s:string){const c=metaCache.get(s);if(c&&c.expires>Date.now())return c.data;const d=await api('/series/'+s);metaCache.set(s,{data:d,expires:Date.now()+3600000});return d;}
+const metaCache=new Map<string,{expires:number,data:any}>();
+async function metadata(s:string,api:(path:string)=>Promise<any>){const c=metaCache.get(s);if(c&&c.expires>Date.now())return c.data;const d=await api('/series/'+s);metaCache.set(s,{data:d,expires:Date.now()+3600000});return d;}
 function bounded(p:URLSearchParams,k:string,d:number,lo:number,hi:number){return Math.max(lo,Math.min(hi,number(p.get(k),d)));}
 export async function GET(req:Request){
+ const api=createKalshiClient() as (path:string)=>Promise<any>;
  const start=Date.now(),p=new URL(req.url).searchParams;
  const c={minPrice:bounded(p,'minPrice',.55,.1,.99),maxPrice:bounded(p,'maxPrice',.95,.1,.99),min24:bounded(p,'min24',250,0,1e9),maxSpread:bounded(p,'maxSpread',.03,.001,.25),min5:bounded(p,'min5',100,1,1e7),ratio:bounded(p,'ratio',2,1,100),min1:bounded(p,'min1',25,1,1e7),earlyRatio:bounded(p,'earlyRatio',3,1,100),minBaseline:25,confirmMin:.75,minMinutes:30,quantity:10};
  const errors:string[]=[],rows:any[]=[];let successfulSeries=0;
  await Promise.all(SERIES.map(async([s,city])=>{try{
- const [d,meta]=await Promise.all([api('/markets?status=open&limit=1000&series_ticker='+s),metadata(s)]);const series=meta.series;if(!/weather|climate/i.test(series.category||''))throw Error('Weather category not verified');successfulSeries++;if(d.cursor)errors.push(city+': market list truncated');
+ const [d,meta]=await Promise.all([api('/markets?status=open&limit=1000&series_ticker='+s),metadata(s,api)]);const series=meta.series;if(!/weather|climate/i.test(series.category||''))throw Error('Weather category not verified');successfulSeries++;if(d.cursor)errors.push(city+': market list truncated');
  for(const m of d.markets||[]){if(m.market_type!=='binary'||!['active','open'].includes(m.status)||Date.parse(m.close_time)<=Date.now())continue;
  for(const side of ['yes','no']){const ask=number(m[side+'_ask_dollars']);if(ask===null||ask<c.minPrice||ask>c.maxPrice||number(m.volume_24h_fp,0)<c.min24)continue;
  rows.push({ticker:m.ticker,event:m.event_ticker,series:s,city,title:m.title,subtitle:m.yes_sub_title,side,ask,bid:number(m[side+'_bid_dollars']),volume24:number(m.volume_24h_fp,0),close:m.close_time,rules:m.rules_primary,secondary:m.rules_secondary,stationProduct:(m.rules_primary||'').match(/\((CLI[A-Z]+)\)/)?.[1]||null,source:/weather company/i.test(m.rules_primary||'')?'The Weather Company':/national weather service|NWS/i.test(m.rules_primary||'')?'NWS':'Review rules',sources:series.settlement_sources||[],feeType:series.fee_type,coefficient:series.fee_type==='quadratic'?.07*number(series.fee_multiplier,1):null,audited:false,stage:'QUEUED'});
