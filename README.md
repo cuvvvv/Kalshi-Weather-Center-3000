@@ -55,3 +55,8 @@ Existing V1 browser journals are retained under their existing keys. Browser jou
 Dashboard requests a scan every 15 seconds while active, with nonoverlap and stale-data indication. Browser throttling and API latency can delay cycles. Request pacing and one rate-limit retry bound API pressure. Supplemental weather is fetched only on review and cached five minutes. In-app/browser alerts require the page; the standalone Node scanner requires an awake host/process supervisor. No unattended host or iPhone push is provisioned.
 
 Before real money: ingest matched historical forecasts and official outcomes, calibrate probability floors out of sample, assess correlated weather-day exposure and validate net returns on a holdout period. This release improves discovery and measurement; it does not establish profitability.
+
+
+## Data quality release
+
+The Data quality tab now ingests exact-station NWS and NOAA aviation observations, date-matched daily and hourly forecasts, raw station reports, provider issue times and quality flags. Missing, stale, mismatched and outlying inputs remain visible. A shared D1 archive stores distinct source revisions for later analysis, triggered by visits/requests. See docs/DATA_SOURCES.md for provenance, thresholds, retention, provider independence, and the remaining official-settlement/probability gaps. No paid feed or calibrated probability model is connected.

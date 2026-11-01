@@ -1,9 +1,17 @@
-// Supplemental NWS station data. It is never substituted for the contract's settlement source.
-const STATIONS:Record<string,string>={CLINYC:'KNYC',CLIMDW:'KMDW',CLIMIA:'KMIA',CLILAX:'KLAX',CLIAUS:'KAUS',CLIDEN:'KDEN',CLIPHL:'KPHL'};
-const cache=new Map<string,{expires:number,data:any}>();
-async function nws(url:string){const r=await fetch(url,{headers:{Accept:'application/geo+json','User-Agent':'WeatherEdge/2.0 (private research dashboard)'},signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('NWS HTTP '+r.status);return r.json() as Promise<any>;}
-export async function GET(req:Request){const product=new URL(req.url).searchParams.get('product')||'',station=STATIONS[product];if(!station)return Response.json({error:'Station product not recognized; manual review required'},{status:400});
- try{let d=cache.get(station);if(!d||d.expires<Date.now()){const [meta,obs]=await Promise.all([nws('https://api.weather.gov/stations/'+station),nws('https://api.weather.gov/stations/'+station+'/observations/latest')]);const [lon,lat]=meta.geometry.coordinates;const point=await nws('https://api.weather.gov/points/'+lat.toFixed(4)+','+lon.toFixed(4));const forecast=await nws(point.properties.forecast);const props=obs.properties;
- const data={station,name:meta.properties.name,product,observation:{time:props.timestamp,temperatureF:props.temperature?.value===null?null:props.temperature.value*9/5+32,description:props.textDescription},forecast:{updated:forecast.properties.updateTime,periods:forecast.properties.periods.slice(0,6).map((p:any)=>({name:p.name,start:p.startTime,end:p.endTime,isDaytime:p.isDaytime,temperature:p.temperature,unit:p.temperatureUnit,description:p.shortForecast}))},observationUrl:'https://api.weather.gov/stations/'+station+'/observations/latest',forecastUrl:point.properties.forecast,fetchedAt:new Date().toISOString(),note:'Supplemental NWS observations and forecasts; not the settlement record, not an estimated outcome probability. Station mapping requires your review.'};d={expires:Date.now()+300000,data};cache.set(station,d);}
- return Response.json(d.data,{headers:{'Cache-Control':'no-store'}});
- }catch(e:any){return Response.json({station,product,error:e.message,note:'No forecast probability generated'},{status:502});}}
+import {collectWeather} from '../../../lib/weather-fetch.mjs';
+import {STATIONS,validDate,localDate} from '../../../lib/weather-quality.mjs';
+import {archiveWeather,weatherHistory} from '../../../db/weather-store';
+export async function GET(req:Request){
+ const p=new URL(req.url).searchParams,product=p.get('product')||'',station=(STATIONS as any)[product];
+ if(!station)return Response.json({error:'Unknown station product; no nearby-station substitution performed'},{status:400});
+ const date=p.get('date')||localDate(Date.now(),station.timezone);
+ if(!validDate(date))return Response.json({error:'A valid YYYY-MM-DD date is required'},{status:400});
+ if(p.get('history')==='1'){try{return Response.json(await weatherHistory(product,date),{headers:{'Cache-Control':'no-store'}})}catch{return Response.json({error:'Archive lookup failed',enabled:false},{status:503})}}
+ if(Math.abs(Date.parse(date+'T12:00:00Z')-Date.now())>8*86400000)return Response.json({error:'Live forecast requests must be within eight days; use history=1 for archived records'},{status:400});
+ const key=new Request('https://weather-edge-cache.invalid/weather/'+product+'/'+date);
+ let cache:Cache|undefined;try{cache=(caches as any).default;const hit=await cache?.match(key);if(hit)return hit;}catch{}
+ try{const data:any=await collectWeather(product,date);let archive:any;
+ try{archive=await archiveWeather(data)}catch{archive={enabled:false,saved:false,error:'Archive write failed; this response is live only'}}
+ const response=Response.json({...data,archive},{headers:{'Cache-Control':'public, max-age=120'}});if(cache)await cache.put(key,response.clone());return response;
+ }catch(e:any){return Response.json({station:station.station,error:e.message,quality:{status:'UNAVAILABLE',probabilityStatus:'UNCALIBRATED',settlementStatus:'NOT_CONNECTED'}},{status:502,headers:{'Cache-Control':'no-store'}})}
+}
